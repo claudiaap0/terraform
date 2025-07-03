@@ -151,3 +151,55 @@ resource "azurerm_network_interface_security_group_association" "nsg_assoc" {
   network_interface_id      = azurerm_network_interface.my_nic[each.key].id
   network_security_group_id = azurerm_network_security_group.my_nsg.id
 }
+
+# Load Balancer
+resource "azurerm_public_ip" "my_pip_lb" {
+  name                = "rg-ne-training-pip-lb"
+  location            = azurerm_resource_group.my_resource_group.location
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+  allocation_method   = "Static"
+}
+
+resource "azurerm_lb" "my_lb" {
+  name                = "rg-ne-training-lb"
+  location            = azurerm_resource_group.my_resource_group.location
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+
+  frontend_ip_configuration {
+    name                 = "rg-ne-training-frontend-pip-lb"
+    public_ip_address_id = azurerm_public_ip.my_pip_lb.id
+  }
+    depends_on = [
+    azurerm_public_ip.my_pip_lb
+  ]
+}
+
+resource "azurerm_lb_backend_address_pool" "my_lb_backend_address_pool" {
+  loadbalancer_id = azurerm_lb.my_lb.id
+  name            = "rg-ne-training-backend-address-pool-lb"
+}
+
+resource "azurerm_network_interface_backend_address_pool_association" "nic_to_lb" {
+  for_each = azurerm_network_interface.my_nic
+
+  network_interface_id    = each.value.id
+  ip_configuration_name   = "internal"
+  backend_address_pool_id = azurerm_lb_backend_address_pool.my_lb_backend_address_pool.id
+}
+
+
+resource "azurerm_lb_probe" "my_lb_probe" {
+  loadbalancer_id = azurerm_lb.my_lb.id
+  name            = "rg-ne-training-probe-lb"
+  port            = 22
+}
+
+resource "azurerm_lb_rule" "my_lb_rule" {
+  loadbalancer_id                = azurerm_lb.my_lb.id
+  probe_id                       = azurerm_lb_probe.my_lb_probe.id
+  name                           = "rg-ne-training-lb-rule"
+  protocol                       = "Tcp"
+  frontend_port                  = 322
+  backend_port                   = 22
+  frontend_ip_configuration_name = "rg-ne-training-frontend-pip-lb"
+}
