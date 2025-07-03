@@ -4,11 +4,6 @@ rg_location = "North Europe"
 vnet_name = "rg-ne-training-vnet"
 vnet_address_space = "10.1.0.0/16"
 
-# snet_name = "snet1-ne"
-# snet_address_prefixes = "10.1.0.0/24"
-# snet_name = "snet2-ne"
-# snet_address_prefixes = "10.1.0.0/30"
-
 subnets = {
   subnet1 = {
     name             = "rg-ne-training-snet1"
