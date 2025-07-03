@@ -202,4 +202,5 @@ resource "azurerm_lb_rule" "my_lb_rule" {
   frontend_port                  = 322
   backend_port                   = 22
   frontend_ip_configuration_name = "rg-ne-training-frontend-pip-lb"
+#  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.my_lb_backend_address_pool.id]
 }
