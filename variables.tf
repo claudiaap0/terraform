@@ -63,3 +63,10 @@ variable "nsg_name" {
   type        = string
   description = "Name of the Network Security Group."
 }
+
+variable "vms" {
+  type = map(object({
+    vm_size       = string
+    subnet_name   = string
+  }))
+}

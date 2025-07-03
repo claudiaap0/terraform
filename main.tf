@@ -26,28 +26,31 @@ resource "azurerm_subnet" "my_subnets" {
 
 # Network Interface
 resource "azurerm_network_interface" "my_nic" {
-  name                = var.nic_name
+  for_each            = var.vms
+  name                = "${each.key}-nic"
   location            = azurerm_resource_group.my_resource_group.location
   resource_group_name = azurerm_resource_group.my_resource_group.name
-  tags = local.tags
+  tags                = local.tags
 
   ip_configuration {
     name                          = "internal"
-    subnet_id                     = azurerm_subnet.my_subnets["subnet1"].id
+    subnet_id                     = azurerm_subnet.my_subnets[each.value.subnet_name].id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.my_pip.id
-
+    public_ip_address_id          = azurerm_public_ip.my_pip[each.key].id
   }
 }
 
+
 # Public Ip
 resource "azurerm_public_ip" "my_pip" {
-  name                = var.pip_name
-  resource_group_name = azurerm_resource_group.my_resource_group.name
+  for_each            = var.vms
+  name                = "${each.key}-pip"
   location            = azurerm_resource_group.my_resource_group.location
+  resource_group_name = azurerm_resource_group.my_resource_group.name
   allocation_method   = "Static"
-  tags = local.tags
+  tags                = local.tags
 }
+
 
 # Key Vault
 resource "azurerm_key_vault" "my_kv" {
@@ -89,20 +92,21 @@ resource "azurerm_key_vault_secret" "ssh_pub_key" {
 
 # Virtual Machine
 resource "azurerm_linux_virtual_machine" "my_linux" {
-  name                = var.vm_name
-  resource_group_name = azurerm_resource_group.my_resource_group.name
+  for_each            = var.vms
+  name                = "${each.key}-vm"
   location            = azurerm_resource_group.my_resource_group.location
-  size                = var.vm_size
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+  size                = each.value.vm_size
   admin_username      = "capostu"
-  tags = local.tags
+  tags                = local.tags
 
   admin_ssh_key {
-  username   = "capostu"
-  public_key = data.azurerm_key_vault_secret.ssh_key.value
+    username   = "capostu"
+    public_key = data.azurerm_key_vault_secret.ssh_key.value
   }
-  
+
   network_interface_ids = [
-    azurerm_network_interface.my_nic.id,
+    azurerm_network_interface.my_nic[each.key].id
   ]
 
   os_disk {
@@ -117,6 +121,7 @@ resource "azurerm_linux_virtual_machine" "my_linux" {
     version   = "latest"
   }
 }
+
 
 # Network Security Group
 resource "azurerm_network_security_group" "my_nsg" {
@@ -140,7 +145,9 @@ resource "azurerm_network_security_group" "my_nsg" {
 }
 
 # Network Security Group association
-resource "azurerm_network_interface_security_group_association" "my_nic_nsg_assoc" {
-  network_interface_id      = azurerm_network_interface.my_nic.id
+resource "azurerm_network_interface_security_group_association" "nsg_assoc" {
+  for_each = var.vms
+
+  network_interface_id      = azurerm_network_interface.my_nic[each.key].id
   network_security_group_id = azurerm_network_security_group.my_nsg.id
 }
