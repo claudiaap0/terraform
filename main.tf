@@ -84,11 +84,17 @@ resource "azurerm_key_vault" "my_kv" {
 }
 
 # Key Vault Secret
-resource "azurerm_key_vault_secret" "ssh_pub_key" {
-  name         = "my-ssh-key"
-  value        = file("~/.ssh/id_rsa.pub")
-  key_vault_id = azurerm_key_vault.my_kv.id
-}
+# resource "azurerm_key_vault_secret" "ssh_pub_key" {
+#   name         = "my-ssh-key"
+#   value        = file("~/.ssh/id_rsa.pub")
+#   key_vault_id = azurerm_key_vault.my_kv.id
+
+#   lifecycle {
+#     ignore_changes = [
+#       value
+#     ]
+#   }
+# }
 
 # Virtual Machine
 resource "azurerm_linux_virtual_machine" "my_linux" {
@@ -255,4 +261,134 @@ resource "azurerm_lb_rule" "http_lb_rule" {
   depends_on = [
     azurerm_lb_probe.http_probe
   ]
+}
+
+# App Service Plan
+resource "azurerm_service_plan" "my_app_service_plan" {
+  name                = "rg-ne-training-appserviceplan"
+  location            = azurerm_resource_group.my_resource_group.location
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+  os_type             = "Linux"
+  sku_name            = "B1"
+}
+
+# Web App
+resource "azurerm_linux_web_app" "my_web_app" {
+  name                = "rg-ne-training-webapp"
+  location            = azurerm_resource_group.my_resource_group.location
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+  service_plan_id     = azurerm_service_plan.my_app_service_plan.id
+  public_network_access_enabled = false
+  tags       = local.tags
+
+  site_config {
+    # ip_restriction {
+    #   name        = "allow-my-ip"
+    #   priority    = 100
+    #   action      = "Allow"
+    #   ip_address  = "128.77.15.15/32"
+    # }
+  }
+}
+
+# Private Endpoint (Web App <=> VNet)
+resource "azurerm_private_endpoint" "webapp_private_endpoint" {
+  name                = "pe-webapp"
+  location            = azurerm_resource_group.my_resource_group.location
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+  subnet_id           = azurerm_subnet.pe_subnet.id
+
+  private_service_connection {
+    name                           = "webapp-private-connection"
+    private_connection_resource_id = azurerm_linux_web_app.my_web_app.id
+    subresource_names              = ["sites"]
+    is_manual_connection           = false
+  }
+}
+
+# New Subnet for the Private Enpoint
+resource "azurerm_subnet" "pe_subnet" {
+  name                 = "snet-private-endpoint"
+  resource_group_name  = azurerm_resource_group.my_resource_group.name
+  virtual_network_name = azurerm_virtual_network.my_vnet.name
+  address_prefixes     = ["10.1.10.0/24"]
+}
+
+# Private DNS Zone
+resource "azurerm_private_dns_zone" "webapp_dns" {
+  name                = "privatelink.azurewebsites.net"
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+}
+
+# Private DNS zone <=> VNet (link)
+resource "azurerm_private_dns_zone_virtual_network_link" "link" {
+  name                  = "link-webapp"
+  resource_group_name   = azurerm_resource_group.my_resource_group.name
+  private_dns_zone_name = azurerm_private_dns_zone.webapp_dns.name
+  virtual_network_id    = azurerm_virtual_network.my_vnet.id
+}
+
+# Private DNS record
+resource "azurerm_private_dns_a_record" "webapp_record" {
+  name                = azurerm_linux_web_app.my_web_app.name
+  zone_name           = azurerm_private_dns_zone.webapp_dns.name
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+  ttl                 = 300
+  records             = [azurerm_private_endpoint.webapp_private_endpoint.private_service_connection[0].private_ip_address]
+}
+
+# Azure Container Instance
+resource "azurerm_container_group" "my_aci" {
+  name                = "rg-ne-training-aci"
+  location            = azurerm_resource_group.my_resource_group.location
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+  os_type             = "Linux"
+  tags       = local.tags
+
+  container {
+    name   = "hello-world"
+    image  = "mcr.microsoft.com/azuredocs/aci-helloworld"
+    cpu    = "0.5"
+    memory = "1.5"
+
+    ports {
+      port     = 443
+      protocol = "TCP"
+    }
+  }
+}
+
+# Azure Container Registry
+resource "azurerm_container_registry" "acr" {
+  name                = "trainingContainerRegistry123432"
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+  location            = azurerm_resource_group.my_resource_group.location
+  sku                 = "Basic"
+  admin_enabled       = true
+}
+
+# ACI created using the image from ACR
+resource "azurerm_container_group" "nginx_aci" {
+  name                = "nginx-aci"
+  location            = azurerm_resource_group.my_resource_group.location
+  resource_group_name = azurerm_resource_group.my_resource_group.name
+  os_type             = "Linux"
+
+  container {
+    name   = "nginx"
+    image = "${azurerm_container_registry.acr.login_server}/nginx:v1"
+    cpu    = "0.5"
+    memory = "1.5"
+
+    ports {
+      port     = 443
+      protocol = "TCP"
+    }
+  }
+
+  image_registry_credential {
+    server   = azurerm_container_registry.acr.login_server
+    username = azurerm_container_registry.acr.admin_username
+    password = azurerm_container_registry.acr.admin_password
+  }
 }
