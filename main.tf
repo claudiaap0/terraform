@@ -142,6 +142,30 @@ resource "azurerm_network_security_group" "my_nsg" {
     destination_address_prefix = "*"
   }
 
+    security_rule {
+    name                       = "Allow-LB-Probe"
+    priority                   = 1000
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "AzureLoadBalancer"
+    destination_address_prefix = "*"
+  }
+
+    security_rule {
+    name                       = "Allow-HTTP"
+    priority                   = 1002
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
 }
 
 # Network Security Group association
@@ -169,9 +193,9 @@ resource "azurerm_lb" "my_lb" {
     name                 = "rg-ne-training-frontend-pip-lb"
     public_ip_address_id = azurerm_public_ip.my_pip_lb.id
   }
-    depends_on = [
-    azurerm_public_ip.my_pip_lb
-  ]
+  #   depends_on = [
+  #   azurerm_public_ip.my_pip_lb
+  # ]
 }
 
 resource "azurerm_lb_backend_address_pool" "my_lb_backend_address_pool" {
@@ -189,9 +213,18 @@ resource "azurerm_network_interface_backend_address_pool_association" "nic_to_lb
 
 
 resource "azurerm_lb_probe" "my_lb_probe" {
-  loadbalancer_id = azurerm_lb.my_lb.id
   name            = "rg-ne-training-probe-lb"
+  loadbalancer_id = azurerm_lb.my_lb.id
+  protocol        = "Tcp"
   port            = 22
+}
+
+resource "azurerm_lb_probe" "http_probe" {
+  name            = "http-health-probe"
+  loadbalancer_id = azurerm_lb.my_lb.id
+  protocol        = "Http"
+  port            = 80
+  request_path    = "/" 
 }
 
 resource "azurerm_lb_rule" "my_lb_rule" {
@@ -199,8 +232,27 @@ resource "azurerm_lb_rule" "my_lb_rule" {
   probe_id                       = azurerm_lb_probe.my_lb_probe.id
   name                           = "rg-ne-training-lb-rule"
   protocol                       = "Tcp"
-  frontend_port                  = 322
+  frontend_port                  = 22
   backend_port                   = 22
   frontend_ip_configuration_name = "rg-ne-training-frontend-pip-lb"
-#  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.my_lb_backend_address_pool.id]
+  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.my_lb_backend_address_pool.id]
+
+    depends_on = [
+    azurerm_lb_probe.my_lb_probe
+  ]
+}
+
+resource "azurerm_lb_rule" "http_lb_rule" {
+  name                            = "http-lb-rule"
+  loadbalancer_id                 = azurerm_lb.my_lb.id
+  frontend_ip_configuration_name = "rg-ne-training-frontend-pip-lb"
+  frontend_port                   = 80
+  backend_port                    = 80
+  protocol                        = "Tcp"
+  backend_address_pool_ids        = [azurerm_lb_backend_address_pool.my_lb_backend_address_pool.id]
+  probe_id                        = azurerm_lb_probe.http_probe.id
+
+  depends_on = [
+    azurerm_lb_probe.http_probe
+  ]
 }
