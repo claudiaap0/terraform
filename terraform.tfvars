@@ -26,3 +26,14 @@ kv_sku = "standard"
 pip_name = "rg-ne-training-pip"
 
 nsg_name = "rg-ne-training-nsg"
+
+vms = {
+  vm1 = {
+    vm_size     = "Standard_B1s"
+    subnet_name = "subnet1"
+  }
+  vm2 = {
+    vm_size     = "Standard_B1s"
+    subnet_name = "subnet2"
+  }
+}
